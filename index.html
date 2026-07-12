@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactive Stance-Phase Biomechanics</title>
+<style>
+  :root {
+    --bg: #f6f8fb;
+    --panel: #ffffff;
+    --text: #152033;
+    --muted: #5f6b7a;
+    --accent: #1f5fbf;
+    --border: #d9e0ea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 24px auto;
+    padding: 0 16px 28px;
+  }
+  h1 { margin: 0 0 8px; font-size: 28px; }
+  .subtitle { color: var(--muted); margin-bottom: 18px; }
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 18px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(31, 54, 88, 0.07);
+  }
+  .canvas-card { padding: 14px; }
+  canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 10px;
+    background: white;
+  }
+  .controls { padding: 16px; }
+  .control-group { margin-bottom: 16px; }
+  .control-group label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--text);
+    border-radius: 9px;
+    padding: 9px 12px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  button:hover { border-color: var(--accent); }
+  button.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  button.phase.active {
+    background: #e8f0ff;
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  input[type="range"] { width: 100%; }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+  }
+  .check label { margin: 0; font-weight: 400; }
+  .readout {
+    padding: 12px;
+    border-radius: 10px;
+    background: #f0f5fc;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .note {
+    margin-top: 18px;
+    padding: 16px;
+    background: #fff8e8;
+    border: 1px solid #ecd28b;
+    border-radius: 12px;
+    line-height: 1.5;
+  }
+  .task {
+    margin-top: 18px;
+    padding: 16px;
+  }
+  .task h2 { margin-top: 0; font-size: 20px; }
+  .task ol { margin-bottom: 0; }
+  .small { font-size: 13px; color: var(--muted); }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Interactive One-Leg Stance Phase</h1>
+  <div class="subtitle">
+    Explore heel strike, loading response, mid-stance, terminal stance and pre-swing. Use the controls below to investigate the model.
+  </div>
+
+  <div class="grid">
+    <div class="card canvas-card">
+      <canvas id="sim" width="900" height="620"></canvas>
+    </div>
+
+    <div class="card controls">
+      <div class="control-group">
+        <label>Animation</label>
+        <div class="row">
+          <button id="playBtn" class="primary">Play</button>
+          <button id="resetBtn">Reset</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="timeline">Stance progression</label>
+        <input id="timeline" type="range" min="0" max="1000" value="0">
+        <div class="small">Drag to inspect any point in the stance phase.</div>
+      </div>
+
+      <div class="control-group">
+        <label>Jump to phase</label>
+        <div class="row">
+          <button class="phase" data-phase="0">HS</button>
+          <button class="phase" data-phase="1">LR</button>
+          <button class="phase" data-phase="2">MS</button>
+          <button class="phase" data-phase="3">TS</button>
+          <button class="phase" data-phase="4">PS</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label for="speed">Playback speed</label>
+        <input id="speed" type="range" min="0.25" max="2.5" step="0.05" value="1">
+        <div><span id="speedValue">1.00</span>×</div>
+      </div>
+
+      <div class="control-group">
+        <label for="hipHeight">Hip height</label>
+        <input id="hipHeight" type="range" min="0.70" max="0.84" step="0.005" value="0.78">
+        <div><span id="hipValue">0.780</span> m</div>
+      </div>
+
+      <div class="control-group">
+        <div class="check">
+          <input id="overlays" type="checkbox" checked>
+          <label for="overlays">Show previous phases</label>
+        </div>
+        <div class="check">
+          <input id="angles" type="checkbox" checked>
+          <label for="angles">Show joint-angle readout</label>
+        </div>
+        <div class="check">
+          <input id="labels" type="checkbox" checked>
+          <label for="labels">Show phase labels</label>
+        </div>
+      </div>
+
+      <div class="readout" id="readout"></div>
+    </div>
+  </div>
+
+  
+
+  
+</div>
+
+<script>
+"use strict";
+
+const canvas = document.getElementById("sim");
+const ctx = canvas.getContext("2d");
+
+const playBtn = document.getElementById("playBtn");
+const resetBtn = document.getElementById("resetBtn");
+const timeline = document.getElementById("timeline");
+const speed = document.getElementById("speed");
+const speedValue = document.getElementById("speedValue");
+const hipHeight = document.getElementById("hipHeight");
+const hipValue = document.getElementById("hipValue");
+const overlays = document.getElementById("overlays");
+const anglesToggle = document.getElementById("angles");
+const labelsToggle = document.getElementById("labels");
+const readout = document.getElementById("readout");
+const phaseButtons = [...document.querySelectorAll(".phase")];
+
+const phaseNames = [
+  "Heel strike",
+  "Loading response",
+  "Mid-stance",
+  "Terminal stance",
+  "Pre-swing"
+];
+
+const shortNames = ["HS", "LR", "MS", "TS", "PS"];
+
+const L1 = 0.43;
+const L2 = 0.43;
+const heelPart = 0.075;
+const toePart = 0.175;
+
+const contactType = [1, 1, 2, 3, 3];
+const contactX = [0.30, 0.22, 0.00, -0.15, -0.28];
+const footDeg = [12, 2, 0, -20, -40];
+
+let progress = 0;
+let playing = false;
+let lastTime = null;
+
+function deg2rad(d) { return d * Math.PI / 180; }
+function rad2deg(r) { return r * 180 / Math.PI; }
+
+function solveKneeForward(hip, ankle, L1, L2) {
+  const dx = ankle.x - hip.x;
+  const dy = ankle.y - hip.y;
+  const d = Math.hypot(dx, dy);
+
+  if (d > L1 + L2 || d < Math.abs(L1 - L2)) {
+    return null;
+  }
+
+  const a = (L1*L1 - L2*L2 + d*d) / (2*d);
+  const h = Math.sqrt(Math.max(L1*L1 - a*a, 0));
+  const mx = hip.x + a * dx / d;
+  const my = hip.y + a * dy / d;
+  const px = -dy / d;
+  const py = dx / d;
+
+  const c1 = { x: mx + h*px, y: my + h*py };
+  const c2 = { x: mx - h*px, y: my - h*py };
+
+  return c1.x > c2.x ? c1 : c2;
+}
+
+function poseForPhase(k) {
+  const hip = { x: 0, y: parseFloat(hipHeight.value) };
+  const a = deg2rad(footDeg[k]);
+
+  let heel, ankle, toe;
+
+  if (contactType[k] === 1 || contactType[k] === 2) {
+    heel = { x: contactX[k], y: 0 };
+    ankle = {
+      x: heel.x + heelPart * Math.cos(a),
+      y: heel.y + heelPart * Math.sin(a)
+    };
+    toe = {
+      x: ankle.x + toePart * Math.cos(a),
+      y: ankle.y + toePart * Math.sin(a)
+    };
+  } else {
+    toe = { x: contactX[k], y: 0 };
+    ankle = {
+      x: toe.x - toePart * Math.cos(a),
+      y: toe.y - toePart * Math.sin(a)
+    };
+    heel = {
+      x: ankle.x - heelPart * Math.cos(a),
+      y: ankle.y - heelPart * Math.sin(a)
+    };
+  }
+
+  const knee = solveKneeForward(hip, ankle, L1, L2);
+  return { hip, knee, ankle, heel, toe };
+}
+
+function mix(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function mixPoint(p1, p2, t) {
+  return { x: mix(p1.x, p2.x, t), y: mix(p1.y, p2.y, t) };
+}
+
+function interpolatePose(P1, P2, t) {
+  return {
+    hip: mixPoint(P1.hip, P2.hip, t),
+    knee: mixPoint(P1.knee, P2.knee, t),
+    ankle: mixPoint(P1.ankle, P2.ankle, t),
+    heel: mixPoint(P1.heel, P2.heel, t),
+    toe: mixPoint(P1.toe, P2.toe, t)
+  };
+}
+
+function smoothstep(t) {
+  return t*t*(3 - 2*t);
+}
+
+function phaseFromProgress(p) {
+  const scaled = p * 4;
+  const i = Math.min(3, Math.floor(scaled));
+  const local = smoothstep(scaled - i);
+  return { i, local, active: p >= 1 ? 4 : Math.round(scaled) };
+}
+
+function worldToCanvas(p) {
+  const xMin = -0.62, xMax = 0.62;
+  const yMin = -0.08, yMax = 0.94;
+  return {
+    x: (p.x - xMin) / (xMax - xMin) * canvas.width,
+    y: canvas.height - (p.y - yMin) / (yMax - yMin) * canvas.height
+  };
+}
+
+function drawLine(p1, p2, width, color) {
+  const a = worldToCanvas(p1);
+  const b = worldToCanvas(p2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+}
+
+function drawCircle(p, radius, fill, stroke="#111") {
+  const q = worldToCanvas(p);
+  ctx.beginPath();
+  ctx.arc(q.x, q.y, radius, 0, 2*Math.PI);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawPose(P, color, alpha=1, widthScale=1) {
+  if (!P || !P.knee) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  drawLine(P.hip, P.knee, 12*widthScale, color);
+  drawLine(P.knee, P.ankle, 11*widthScale, color);
+  drawLine(P.heel, P.toe, 9*widthScale, color);
+  drawCircle(P.hip, 6*widthScale, "#ffffff");
+  drawCircle(P.knee, 6*widthScale, "#ffffff");
+  drawCircle(P.ankle, 6*widthScale, "#ffffff");
+  ctx.restore();
+}
+
+function angleAt(A, B, C) {
+  const u = { x: A.x - B.x, y: A.y - B.y };
+  const v = { x: C.x - B.x, y: C.y - B.y };
+  const dot = u.x*v.x + u.y*v.y;
+  const nu = Math.hypot(u.x,u.y);
+  const nv = Math.hypot(v.x,v.y);
+  const c = Math.max(-1, Math.min(1, dot/(nu*nv)));
+  return rad2deg(Math.acos(c));
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Header
+  ctx.fillStyle = "#152033";
+  ctx.font = "bold 28px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("One-Leg Stance Phase with a Fixed Hip Reference", canvas.width/2, 40);
+
+  // Walking direction arrow
+  ctx.strokeStyle = "#111";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(90, 80);
+  ctx.lineTo(240, 80);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(240, 80);
+  ctx.lineTo(222, 69);
+  ctx.lineTo(222, 91);
+  ctx.closePath();
+  ctx.fillStyle = "#111";
+  ctx.fill();
+  ctx.font = "16px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("Walking direction", 95, 65);
+
+  // Ground
+  drawLine({x:-0.62,y:0},{x:0.62,y:0},3,"#111");
+
+  const data = phaseFromProgress(progress);
+  const poses = [0,1,2,3,4].map(poseForPhase);
+  const current = progress >= 1
+    ? poses[4]
+    : interpolatePose(poses[data.i], poses[data.i+1], data.local);
+
+  const phaseNumber = progress >= 1 ? 4 : Math.min(4, Math.round(progress*4));
+
+  if (overlays.checked) {
+    for (let k = 0; k < phaseNumber; k++) {
+      drawPose(poses[k], "#aeb7c4", 0.55, 0.72);
+    }
+  }
+
+  drawPose(current, "#1f5fbf", 1, 1);
+
+  // Fixed hip label
+  const hp = worldToCanvas(current.hip);
+  ctx.fillStyle = "#111";
+  ctx.font = "bold 15px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText("Fixed hip", hp.x + 14, hp.y - 12);
+
+  // Phase labels
+  if (labelsToggle.checked) {
+    const labelX = [0.38,0.22,0,-0.22,-0.40];
+    ctx.font = "bold 16px Arial";
+    ctx.textAlign = "center";
+    for (let k=0; k<5; k++) {
+      const q = worldToCanvas({x:labelX[k], y:0.055});
+      ctx.fillStyle = k === phaseNumber ? "#1f5fbf" : "#364152";
+      ctx.fillText(shortNames[k], q.x, q.y);
+    }
+  }
+
+  // Phase title
+  ctx.fillStyle = "#152033";
+  ctx.font = "bold 22px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText(phaseNames[phaseNumber], canvas.width/2, 118);
+
+  // Timeline caption
+  ctx.font = "16px Arial";
+  ctx.fillStyle = "#5f6b7a";
+  ctx.fillText(
+    "Chronological order relative to fixed hip: HS → LR → MS → TS → PS",
+    canvas.width/2,
+    canvas.height - 18
+  );
+
+  // Readout
+  if (!current.knee) {
+    readout.innerHTML = "<strong>Geometry warning:</strong> selected hip height makes the ankle unreachable.";
+    return;
+  }
+
+  const kneeInterior = angleAt(current.hip, current.knee, current.ankle);
+  const kneeFlexion = 180 - kneeInterior;
+  const footAngle = Math.atan2(
+    current.toe.y-current.heel.y,
+    current.toe.x-current.heel.x
+  );
+
+  readout.innerHTML =
+    `<strong>Current phase:</strong> ${phaseNames[phaseNumber]}<br>` +
+    `<strong>Hip height:</strong> ${current.hip.y.toFixed(3)} m<br>` +
+    (anglesToggle.checked
+      ? `<strong>Approx. knee flexion:</strong> ${kneeFlexion.toFixed(1)}°<br>` +
+        `<strong>Foot angle:</strong> ${rad2deg(footAngle).toFixed(1)}°`
+      : "");
+}
+
+function animate(time) {
+  if (lastTime === null) lastTime = time;
+  const dt = (time - lastTime) / 1000;
+  lastTime = time;
+
+  if (playing) {
+    progress += dt * 0.18 * parseFloat(speed.value);
+    if (progress >= 1) {
+      progress = 1;
+      playing = false;
+      playBtn.textContent = "Play";
+    }
+    timeline.value = Math.round(progress * 1000);
+    render();
+  }
+
+  requestAnimationFrame(animate);
+}
+
+playBtn.addEventListener("click", () => {
+  if (progress >= 1) progress = 0;
+  playing = !playing;
+  playBtn.textContent = playing ? "Pause" : "Play";
+});
+
+resetBtn.addEventListener("click", () => {
+  progress = 0;
+  playing = false;
+  playBtn.textContent = "Play";
+  timeline.value = 0;
+  render();
+});
+
+timeline.addEventListener("input", () => {
+  progress = parseInt(timeline.value,10) / 1000;
+  playing = false;
+  playBtn.textContent = "Play";
+  render();
+});
+
+speed.addEventListener("input", () => {
+  speedValue.textContent = parseFloat(speed.value).toFixed(2);
+});
+
+hipHeight.addEventListener("input", () => {
+  hipValue.textContent = parseFloat(hipHeight.value).toFixed(3);
+  render();
+});
+
+[overlays, anglesToggle, labelsToggle].forEach(el =>
+  el.addEventListener("change", render)
+);
+
+phaseButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    const p = parseInt(btn.dataset.phase,10);
+    progress = p / 4;
+    timeline.value = Math.round(progress*1000);
+    playing = false;
+    playBtn.textContent = "Play";
+    phaseButtons.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    render();
+  });
+});
+
+render();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
